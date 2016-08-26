@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+import os
 import urllib.request as urllib2
 
 from nagioscheck import NagiosCheck, UsageError
 from nagioscheck import PerformanceMetric, Status
+
+import pickle
 
 
 try:
@@ -27,6 +30,8 @@ SHARD_STATE = {'UNASSIGNED': 1,
                'INITIALIZING': 2,
                'STARTED': 3,
                'RELOCATING': 4}
+
+TMP_DIR = "/tmp"
 
 
 class ESShard(object):
@@ -547,6 +552,36 @@ class ElasticSearchCheck(NagiosCheck):
         if downgraded:
             msg = ("One or more index shards are not being replicated "
                    "across failure domains.  Use -vv to list them.")
+
+        # check topology
+        topology = {}
+        try:
+            topology = pickle.load(open(os.path.join(TMP_DIR,es_health['cluster_name'] + ".topology"),"rb"))
+            for ntype in ["data","web_node","master"]:
+                shouldbe = 0
+                itis = 0
+                for instype,dat in topology.get(ntype,{}).items():
+                    if instype == "always_on":
+                        cst = len(dat)
+                        shouldbe += cst
+                        itis += cst
+                    elif instype.startswith("sfr-"):
+                        shouldbe += dat.get("capacity",0)
+                        itis += len(dat.get("spot",[]))
+                    elif instype == "spot":
+                        cst = len(dat)
+                        shouldbe += cst
+                        itis += cst
+                    else:
+                        raise ValueError("Unknown instance type '%s' found in topology" % instype)
+                if shouldbe != itis:
+                    msg = ("Expected %s %s nodes but only found %s nodes" % (shouldbe,ntype,itis))
+                    self.health = RED
+        except Exception as e:
+            msg = ("Error while checking topology: %s" % e)
+            self.health = YELLOW
+            import traceback
+            print(traceback.format_exc())
 
         # ES detected a problem that we did not.  This should never 
         # happen.  (If it does, you should work out what happened, then 
