@@ -155,6 +155,8 @@ class ElasticSearchCheck(NagiosCheck):
         es_stats = get_json(r'http://%s:%d/%s_nodes/_local/'
                             'stats?all=true' % (host, port, prefix))
 
+        es_use = get_json(r'http://%s:%d/_stats' % (host, port))
+
         myid = list(es_stats['nodes'].keys())[0]
 
         n_nodes = es_health['number_of_nodes']
@@ -413,6 +415,14 @@ class ElasticSearchCheck(NagiosCheck):
                 "c"),
             ("heap_used", "jvm.mem.heap_used_percent", "%"),
         )
+
+        usage = (
+            ("get_total", 'get.total', "c"),
+            ("get_time_ms", 'get.time_in_millis', "ms"),
+            ("search_total", 'search.query_total', "c"),
+            ("search_time_ms", 'search.query_time_in_millis', "ms"),
+            )
+        dict2perfdata(es_use["_all"]["total"],usage)
 
         dict2perfdata(es_stats['nodes'][myid], metrics)
 
