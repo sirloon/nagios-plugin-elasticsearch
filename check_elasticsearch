@@ -174,7 +174,7 @@ class ElasticSearchCheck(NagiosCheck):
 
         if es_usage:
             pass
-            es_use = get_json(r'http://%s:%d/_stats' % (host, port))
+            s_use = get_json(r'http://%s:%d/_stats' % (host, port))
 
             usage = (
                 ("docs_total","docs.count","c"),
@@ -193,7 +193,10 @@ class ElasticSearchCheck(NagiosCheck):
                 )
             # compute speed perf
             for name,op,totalk,timek in [("get","get","total","time_in_millis"),("search","search","query_total","query_time_in_millis"),("fetch","search","fetch_total","fetch_time_in_millis")]:
-                speed = float(es_use["_all"]["total"][op][totalk]) / float(es_use["_all"]["total"][op][timek])
+                try:
+                    speed = float(es_use["_all"]["total"][op][totalk]) / float(es_use["_all"]["total"][op][timek])
+                except ZeroDivisionError:
+                    speed = 0.0
                 metric = PerformanceMetric(label="%s_speed" % name,value=speed,unit="c/ms")
                 perfdata.append(metric)
 
