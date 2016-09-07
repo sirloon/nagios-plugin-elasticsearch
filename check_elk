@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+
+import os
+import urllib.request as urllib2
+
+from nagioscheck import NagiosCheck, UsageError
+from nagioscheck import PerformanceMetric, Status
+
+import pickle
+
+
+try:
+    import json
+except ImportError:
+    import simplejson as json
+
+HEALTH = {'red': 0,
+          'yellow': 1,
+          'green': 2}
+
+RED = HEALTH['red']
+YELLOW = HEALTH['yellow']
+GREEN = HEALTH['green']
+
+HEALTH_MAP = {0: 'critical',
+              1: 'warning',
+              2: 'ok'}
+
+SHARD_STATE = {'UNASSIGNED': 1,
+               'INITIALIZING': 2,
+               'STARTED': 3,
+               'RELOCATING': 4}
+
+TMP_DIR = "/tmp"
+
+
+class ELKCheck(NagiosCheck):
+
+    def __init__(self):
+        NagiosCheck.__init__(self)
+
+        self.health = HEALTH['green']
+
+        self.add_option('H', 'host', 'host',
+                        "Hostname or network address to probe. "
+                        "The ElasticSearch API should be listening here. "
+                        "Defaults to 'localhost'.")
+
+        self.add_option('p', 'port', 'port',
+                        "TCP port to probe. "
+                        "The ElasticSearch API should be listening "
+                        "here. Defaults to 9200.")
+
+        self.add_option('t', 'last_check', 'last_check',
+                        "Last time the host was checked (epoch seconds)")
+
+        self.add_option('e', 'error_num', 'error_num',
+                        "Error number to look for, can be a ES pattern"
+                        "defaulting to 502 (ie. '5**')")
+
+
+    def check(self, opts, args):
+        host = opts.host or "localhost"
+        port = int(opts.port or '9200')
+        last_check_ms = int(opts.last_check) * 1000
+        error_num = opts.error_num or "502"
+
+        #
+        # Data retrieval
+        #
+        q = "q=@fields.status:%s%%20@timestamp:>=%s&default_operator=AND" % (error_num,last_check_ms)
+        results = get_json(r'http://%s:%d/_search?%s' % (host, port, q))
+        count_err = results["hits"]["total"]
+        # perf data
+        perfdata = []
+        metric = PerformanceMetric(label="%s errors" % error_num,value=count_err,unit="err")
+        perfdata.append(metric)
+
+        if count_err:
+            health = RED
+            #import pprint
+            #pprint.pprint(results)
+            details = ",".join([h["_source"].get("@fields",{}).get("request","?") for h in results["hits"]["hits"]])
+            msg = "Found %s '%s' errors (first 10: %s)" % (count_err,error_num,details)
+
+        else:
+            health = GREEN
+            details = ""
+            msg = "No '%s' error found" % error_num
+
+        raise Status(HEALTH_MAP[health],(msg, None, "%s %s" % (msg, details)),
+                         perfdata)
+
+def get_json(uri):
+    try:
+        f = urllib2.urlopen(uri)
+    except urllib2.HTTPError as e:
+        raise Status('unknown', ("API failure",
+                                 None,
+                                 "API failure:\n\n%s" % str(e)))
+    except urllib2.URLError as e:
+        # The server could be down; make this CRITICAL.
+        raise Status('critical', (e.reason,))
+
+    body = f.read().decode()
+
+    try:
+        j = json.loads(body)
+    except ValueError as e:
+        raise Status('unknown', ("API returned nonsense",))
+
+    return j
+
+
+
+if __name__ == '__main__':
+    r= ELKCheck().run()

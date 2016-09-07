@@ -173,31 +173,30 @@ class ElasticSearchCheck(NagiosCheck):
 
 
         if es_usage:
-            pass
-            s_use = get_json(r'http://%s:%d/_stats' % (host, port))
+            es_use = get_json(r'http://%s:%d/_stats' % (host, port))
 
             usage = (
-                ("docs_total","docs.count","c"),
-                ("get_total", 'get.total', "c"),
+                ("docs_total","docs.count","docs"),
+                ("get_total", 'get.total', "docs"),
                 ("get_time_ms", 'get.time_in_millis', "ms"),
-                ("search_total", 'search.query_total', "c"),
+                ("search_total", 'search.query_total', "docs"),
                 ("search_time_ms", 'search.query_time_in_millis', "ms"),
-                ("search_fetch_total", 'search.fetch_total', "c"),
+                ("search_fetch_total", 'search.fetch_total', "docs"),
                 ("search_fetch_time_ms", 'search.fetch_time_in_millis', "ms"),
-                ("cache_mem_size", 'query_cache.memory_size_in_bytes', "b"),
-                ("cache_total_count", 'query_cache.total_count', "c"),
-                ("cache_hit_count", 'query_cache.hit_count', "c"),
-                ("cache_miss_count", 'query_cache.miss_count', "c"),
-                ("cache_size", 'query_cache.cache_size', "c"),
-                ("cache_count", 'query_cache.cache_count', "c"),
+                ("cache_mem_size", 'query_cache.memory_size_in_bytes', "B"),
+                ("cache_total_count", 'query_cache.total_count', "docs"),
+                ("cache_hit_count", 'query_cache.hit_count', "docs"),
+                ("cache_miss_count", 'query_cache.miss_count', "docs"),
+                ("cache_size", 'query_cache.cache_size', "docs"),
+                ("cache_count", 'query_cache.cache_count', "docs"),
                 )
             # compute speed perf
             for name,op,totalk,timek in [("get","get","total","time_in_millis"),("search","search","query_total","query_time_in_millis"),("fetch","search","fetch_total","fetch_time_in_millis")]:
                 try:
-                    speed = float(es_use["_all"]["total"][op][totalk]) / float(es_use["_all"]["total"][op][timek])
+                    speed = "%.2f" % (float(es_use["_all"]["total"][op][totalk]) / float(es_use["_all"]["total"][op][timek]) * 1000)
                 except ZeroDivisionError:
                     speed = 0.0
-                metric = PerformanceMetric(label="%s_speed" % name,value=speed,unit="c/ms")
+                metric = PerformanceMetric(label="%s_speed" % name,value=speed,unit="docs/s")
                 perfdata.append(metric)
 
             dict2perfdata(es_use["_all"]["total"],usage)
