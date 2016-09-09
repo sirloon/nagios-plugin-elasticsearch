@@ -618,6 +618,8 @@ class ElasticSearchCheck(NagiosCheck):
                     if shouldbe != itis:
                         msg = ("Expected %s %s nodes but only found %s nodes" % (shouldbe,ntype,itis))
                         self.health = RED
+            except FileNotFoundError as e:
+                msg += " (no topology found)"
             except Exception as e:
                 msg = ("Error while checking topology: %s" % e)
                 self.health = YELLOW
